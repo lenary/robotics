@@ -1,9 +1,13 @@
-B#!/usr/bin/env python
+#!/usr/bin/env python
 
 import sys
-# use these for bash on Win10 to save figures (need better solution here)
-import matplotlib
-matplotlib.use('Agg')
+import os
+
+# check for DISPLAY environment variable and use matplotlib 'Agg' if not present
+# this is a check for Windows Linux Subsystem GUI issues
+if os.environ.get('DISPLAY') is None:
+    import matplotlib
+    matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
 
@@ -28,7 +32,7 @@ def main(fpin, fpout):
         if line.startswith('POS'):
             _, s, us, f1, f2, f3 = line.split(' ')
             x,y,o = float(f1), float(f2), 90.0 - float(f3)
-            print('#ROBOT {0} {1} {2}'.format(x,y,o))
+            #print('#ROBOT {0} {1} {2}'.format(x,y,o))
             pos.append((x,y,o))
         elif line.startswith('LASER-RANGE'):
             pass
