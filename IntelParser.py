@@ -15,6 +15,8 @@ class IntelParser(DataParser):
             line = l.rstrip()
             if line.startswith('POS'):
                 _, s, us, f1, f2, f3 = line.split(' ')
+                # TODO: why is the angle 90 - f3?
+                # this is how the rec2script.c file handles it
                 x,y,o = float(f1), float(f2), (90.0 - float(f3))
                 self.posData.append((x,y,o))
             elif line.startswith('LASER-RANGE'):
