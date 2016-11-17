@@ -6,9 +6,11 @@ and populates the position and laser range data lists: posData, rangeData
 
 Position Data: (x, y, theta, timestamp)
 Range Data: (x, y, theta, timestamp, [laser range readings])
+Params: string -> data
 """
 class DataParser:
     def __init__(self):
+        self.params = {}
         self.posData = []
         self.rangeData = []
 

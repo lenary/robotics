@@ -39,3 +39,22 @@ class CarmenParser(DataParser):
             elif line[0].startswith('RLASER'):
                 # likely do same as FLASER (format is same), but store in separate data structure?
                 pass
+
+            elif line[0] == 'PARAM':
+                # Parameters
+                param_name = line[1]
+                param_val = line[2]
+                if param_val == "on":
+                    param_val = True
+                elif param_val == "off":
+                    param_val = False
+                else:
+                    try:
+                        param_val = int(param_val)
+                    except ValueError:
+                        try:
+                            param_val = float(param_val)
+                        except ValueError:
+                            pass
+
+                self.params[param_name] = param_val
