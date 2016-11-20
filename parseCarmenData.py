@@ -5,6 +5,7 @@ import os
 import math
 
 from CarmenParser import CarmenParser
+from SDF import SDF
 
 # check for DISPLAY environment variable and use matplotlib 'Agg' if not present
 # this is a check for Windows Linux Subsystem GUI issues
@@ -22,6 +23,7 @@ def plotPos(pos):
     y = [p[1] for p in pos]
     plt.clf()
     plt.plot(x, y, 'k.')
+    plt.axis('equal')
     plt.xlabel('x pos')
     plt.ylabel('y pos')
     plt.savefig('pos.png')
@@ -38,29 +40,33 @@ def plotScan(scans):
 
     plt.clf()
 
-    for i in range(len(scans)):
-        scan = scans[i]
-
+    for scan in scans:
+        (x,y,theta,_,lrData) = scan
         thetaLen = 10
-        x,y,theta = scan[0:3]
         dx = []
         dy = []
-        lrData = scan[4]
-        stepSize = 0.5 if (len(lrData) == 360 or len(lrData) == 361) else 1.0
-        for i in range(len(lrData)):
-            dx.append(x + (lrData[i] * math.cos(math.radians(theta + 90.0 - stepSize*float(i)))))
-            dy.append(y + (lrData[i] * math.sin(math.radians(theta + 90.0 - stepSize*float(i)))))
+        rngs = []
+        for (brg,rng) in lrData:
+            if rng<10:
+                dx.append(x + (rng * math.cos(theta + brg)))
+                dy.append(y + (rng * math.sin(theta + brg)))
+                rngs.append(rng)
+
+        local_sdf = SDF.fromRangeLine(scan, res=0.1, threshold=10)
+        # local_sdf.plot(plt)
+        # break
 
         # plot robot location and heading
         #plt.plot([x],[y], 'ro')
         #plt.plot([x, x+(thetaLen*math.cos(math.radians(theta)))],[y, y+(thetaLen*math.sin(math.radians(theta)))], 'r-')
 
         # plot a smaller robot location marker than above (and no heading)
-        plt.plot([x],[y], 'r.')
+        plt.plot([x],[y], 'r+')
 
         # plot laser scan data points
-        #plt.plot(dx, dy, 'b.')
+        plt.scatter(dx, dy, c=rngs)
 
+    plt.axis('equal')
     plt.xlabel('x pos')
     plt.ylabel('y pos')
     plt.savefig('scan.png')
