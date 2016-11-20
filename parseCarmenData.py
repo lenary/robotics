@@ -54,7 +54,6 @@ def plotScan(scans):
 
         local_sdf = SDF.fromRangeLine(scan, res=0.1, threshold=10)
         # local_sdf.plot(plt)
-        # break
 
         # plot robot location and heading
         #plt.plot([x],[y], 'ro')
@@ -64,7 +63,7 @@ def plotScan(scans):
         plt.plot([x],[y], 'r+')
 
         # plot laser scan data points
-        plt.scatter(dx, dy, c=rngs)
+        # plt.scatter(dx, dy, c=rngs)
 
     plt.axis('equal')
     plt.xlabel('x pos')
