@@ -40,6 +40,8 @@ def plotScan(scans):
 
     plt.clf()
 
+    global_sdf = SDF.asGlobal(initextents=(200.0, 200.0), res=0.1)
+
     for scan in scans:
         (x,y,theta,_,lrData) = scan
         thetaLen = 10
@@ -53,7 +55,7 @@ def plotScan(scans):
                 rngs.append(rng)
 
         local_sdf = SDF.fromRangeLine(scan, res=0.1, threshold=10)
-        # local_sdf.plot(plt)
+        global_sdf.addLocalSDF(local_sdf)
 
         # plot robot location and heading
         #plt.plot([x],[y], 'ro')
@@ -64,6 +66,9 @@ def plotScan(scans):
 
         # plot laser scan data points
         # plt.scatter(dx, dy, c=rngs)
+        # plt.colorbar()
+
+    global_sdf.plotSurfaces(plt)
 
     plt.axis('equal')
     plt.xlabel('x pos')

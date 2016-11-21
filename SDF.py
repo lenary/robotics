@@ -14,7 +14,17 @@ Each entry represents the distance from that point (or the centre of the res by 
 """
 class SDF(object):
     @staticmethod
-    def fromRangeLine(logline, res=0.1, threshold=10, truncate=1.0):
+    def asGlobal(initextents=(100.0, 100.0), res=0.1):
+        size_x = int(initextents[0]/res)
+        size_y = int(initextents[1]/res)
+
+        offset_x = closestResVal(-initextents[0]/2, res)
+        offset_y = closestResVal(-initextents[1]/2, res)
+
+        return SDF(initsize=(size_x,size_y), res=res, offset=(offset_x,offset_y), truncate=False)
+
+    @staticmethod
+    def fromRangeLine(logline, res=0.1, threshold=10.0, truncate=1.0):
         (x, y, theta, ts, readings) = logline
 
         size = int(2*threshold/res)
@@ -27,7 +37,7 @@ class SDF(object):
 
         for brg,rng in readings:
             if rng < threshold:
-                sdf.addLaserRangeReading(normalizeRadians(theta+brg), rng, origin=(x,y))
+                sdf.addLaserRangeReading(theta+brg, rng, beam_origin=(x,y))
 
         return sdf
 
@@ -40,9 +50,6 @@ class SDF(object):
         self._dtype = np.dtype([('dist', np.float32), ('nreadings', np.int)])
 
         self._array = np.zeros(self.size, dtype=self._dtype)
-
-    def is_global_sdf(self):
-        return self.offset == (0,0) and self.truncate is False
 
     """
 
@@ -103,6 +110,9 @@ class SDF(object):
                     break
 
     def _addSurfaceDistanceReading(self, idx, dist, count=1):
+        if count == 0:
+            return
+
         # This just accumulates the averages
         ave_dist, old_count = self._array[idx]
         new_count = old_count + count
@@ -119,9 +129,11 @@ class SDF(object):
 
 
     def _convertCoordsToLocalIdx(self, x, y):
+        # Think of offset as the global coordinates (in metres) of the bottom left corner
         x = int(round((x-self.offset[0])/self.res))
         y = int(round((y-self.offset[1])/self.res))
 
+        # Of course, only convert coords if we know they're in the right space
         if (0 <= x < self.size[0]) and (0 <= y < self.size[1]):
             return (x,y)
         else:
@@ -132,35 +144,81 @@ class SDF(object):
         y = (idx[1] * self.res) + self.offset[1]
         return (x,y)
 
+    def extents(self):
+        bl = self._convertLocalIdxToCoords((0,0))
+        tr = self._convertLocalIdxToCoords((self.size[0]-1, self.size[1]-1))
+        return {"bl":bl, "tr":tr}
+
     """
     This only works if the resolution is the same, and the offsets align based on the resolution.
 
     This should expand the current SDF to include all the local data, averaged into the global view.
     """
     def addLocalSDF(self, local_sdf):
-        # TODO:
-        # - Check resolutions agree
-        # - Check sizes, expand local array if needed
-        # - Iterate over local_sdf, adding all entries from it to the
-        # current sdf. Use coordinate conversion methods above, and
-        # _addSurfaceDistanceReading with all 3 arguments.
+        if self.res != local_sdf.res:
+            raise ValueError("Resolutions of Local SDF (%f) must match Global SDF (%f)" % (local_sdf.res, self.res))
+
+        global_extents = self.extents()
+        local_extents = self.extents()
+        local_in_global = (global_extents["bl"][0] <= local_extents["bl"][0] <= global_extents["tr"][0]) and \
+                          (global_extents["bl"][0] <= local_extents["tr"][0] <= global_extents["tr"][0]) and \
+                          (global_extents["bl"][1] <= local_extents["bl"][1] <= global_extents["tr"][1]) and \
+                          (global_extents["bl"][1] <= local_extents["tr"][1] <= global_extents["tr"][1])
+
+        if not local_in_global:
+            self._extendToCover(local_extents)
+
+
+        it = np.nditer(local_sdf._array, flags=['multi_index'], op_flags=['readonly'])
+        while not it.finished:
+            current = it[0]
+            local_idx = it.multi_index
+            local_coords = local_sdf._convertLocalIdxToCoords(local_idx)
+            global_idx = self._convertCoordsToLocalIdx(local_coords[0], local_coords[1])
+            if global_idx is None:
+                raise ValueError("something's fucky, local is within global but coords don't resolve")
+            else:
+                self._addSurfaceDistanceReading(global_idx, current['dist'], count=current['nreadings'])
+
+            it.iternext()
+
+    # TODO
+    def _extendToCover(self, new_extents):
+        print "Extending..."
         pass
 
     def plot(self, plt):
+        # This is odd, but gives us really nice plots.
+        masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
+
         plt.clf()
         plt.axis('equal')
-        plt.imshow(self._array['dist'])
-        # plt.imshow(self._array['nreadings'])
+        plt.imshow(masked, origin='lower', interpolation='nearest', aspect='equal')
+        plt.colorbar()
+        plt.show()
+
+
+    def plotSurfaces(self, plt):
+        # so we first mask to only the places we have readings
+        masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
+
+        # each square has built up an average distance to a surface
+        # from all the readings that have intersected with it. We want
+        # to map all the squares that are within 3*self.res of that
+        # surface, or at least squares that think they're within that
+        # distance.
+        # We'll plot the number of readings, higher number = more sure.
+        surfaces = np.ma.masked_where(np.absolute(masked) > 3*self.res, self._array["nreadings"])
+
+        plt.clf()
+        plt.axis('equal')
+        plt.imshow(surfaces, origin='lower', interpolation='nearest', aspect='equal')
+        plt.colorbar()
         plt.show()
 
 
 def closestResVal(value, res):
     return res*round(value/res)
 
-def normalizeRadians(radians):
-    x = radians
-    while x >= 2*math.pi:
-        x -= 2*math.pi
-    while x < 0:
-        x += 2*math.pi
-    return x
+
+
