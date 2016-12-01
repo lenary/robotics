@@ -15,13 +15,13 @@ Each entry represents the distance from that point (or the centre of the res by 
 class SDF(object):
     @staticmethod
     def asGlobal(initextents=(100.0, 100.0), res=0.1):
-        size_x = int(initextents[0]/res)
-        size_y = int(initextents[1]/res)
+        size_y = int(initextents[0]/res)
+        size_x = int(initextents[1]/res)
 
-        offset_x = closestResVal(-initextents[0]/2, res)
-        offset_y = closestResVal(-initextents[1]/2, res)
+        offset_y = closestResVal(-initextents[0]/2, res)
+        offset_x = closestResVal(-initextents[1]/2, res)
 
-        return SDF(initsize=(size_x,size_y), res=res, offset=(offset_x,offset_y), truncate=False)
+        return SDF(initsize=(size_y,size_x), res=res, offset=(offset_y,offset_x,), truncate=False)
 
     @staticmethod
     def fromRangeLine(logline, res=0.1, threshold=10.0, truncate=1.0):
@@ -29,15 +29,15 @@ class SDF(object):
 
         size = int(2*threshold/res)
 
-        offset_x = closestResVal(x-threshold, res)
         offset_y = closestResVal(y-threshold, res)
+        offset_x = closestResVal(x-threshold, res)
 
-        sdf = SDF(initsize=(size,size), res=res, offset=(offset_x, offset_y), truncate=truncate)
+        sdf = SDF(initsize=(size,size), res=res, offset=(offset_y, offset_x), truncate=truncate)
         sdf.timestamp = ts
 
         for brg,rng in readings:
             if rng < threshold:
-                sdf.addLaserRangeReading(theta+brg, rng, beam_origin=(x,y))
+                sdf.addLaserRangeReading(theta+brg, rng, beam_origin=(y,x))
 
         return sdf
 
@@ -57,7 +57,7 @@ class SDF(object):
     def addLaserRangeReading(self, brg, rng, beam_origin=(0,0)):
         visited = set()
 
-        (x,y) = beam_origin
+        (y,x) = beam_origin
 
         # Now we begin marching out from beam_origin
         current = 0.0
@@ -67,11 +67,11 @@ class SDF(object):
             current += step
 
             # Where are we in the global space?
-            step_x = x + (current * math.cos(brg))
             step_y = y + (current * math.sin(brg))
+            step_x = x + (current * math.cos(brg))
 
             # Where is the closest square to where we are right now
-            idx = self._convertCoordsToLocalIdx(step_x, step_y)
+            idx = self._convertCoordsToLocalIdx(step_y, step_x)
             if idx is None:
                 # we're outside the limits of the course, stop
                 # marching
@@ -85,8 +85,8 @@ class SDF(object):
             else:
                 # Find out where the centre of this square is, and how
                 # far it is from the origin
-                sq_x, sq_y = self._convertLocalIdxToCoords(idx)
-                sq_to_origin = math.hypot(sq_x - x, sq_y - y)
+                sq_y, sq_x = self._convertLocalIdxToCoords(idx)
+                sq_to_origin = math.hypot(sq_y - y, sq_x - x)
 
                 # The distance to the surface is roughly the
                 # difference between the range reading and how far the
@@ -128,21 +128,21 @@ class SDF(object):
             return "STOP"
 
 
-    def _convertCoordsToLocalIdx(self, x, y):
+    def _convertCoordsToLocalIdx(self, y, x):
         # Think of offset as the global coordinates (in metres) of the bottom left corner
-        x = int(round((x-self.offset[0])/self.res))
-        y = int(round((y-self.offset[1])/self.res))
+        y = int(round((y-self.offset[0])/self.res))
+        x = int(round((x-self.offset[1])/self.res))
 
         # Of course, only convert coords if we know they're in the right space
-        if (0 <= x < self.size[0]) and (0 <= y < self.size[1]):
-            return (x,y)
+        if (0 <= y < self.size[0]) and (0 <= x < self.size[1]):
+            return (y,x)
         else:
             return None
 
     def _convertLocalIdxToCoords(self, idx):
-        x = (idx[0] * self.res) + self.offset[0]
-        y = (idx[1] * self.res) + self.offset[1]
-        return (x,y)
+        y = (idx[0] * self.res) + self.offset[0]
+        x = (idx[1] * self.res) + self.offset[1]
+        return (y,x)
 
     def extents(self):
         bl = self._convertLocalIdxToCoords((0,0))
@@ -191,8 +191,6 @@ class SDF(object):
         # This is odd, but gives us really nice plots.
         masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
 
-        plt.clf()
-        plt.axis('equal')
         plt.imshow(masked, origin='lower', interpolation='nearest', aspect='equal')
         plt.colorbar()
         plt.show()
@@ -219,6 +217,3 @@ class SDF(object):
 
 def closestResVal(value, res):
     return res*round(value/res)
-
-
-
