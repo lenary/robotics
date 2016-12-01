@@ -43,37 +43,34 @@ def plotScan(scans):
     global_sdf = SDF.asGlobal(initextents=(200.0, 200.0), res=0.1)
 
     for scan in scans:
-        (x,y,theta,_,lrData) = scan
-        thetaLen = 10
-        dx = []
-        dy = []
-        rngs = []
-        for (brg,rng) in lrData:
-            if rng<10:
-                dx.append(x + (rng * math.cos(theta + brg)))
-                dy.append(y + (rng * math.sin(theta + brg)))
-                rngs.append(rng)
-
         local_sdf = SDF.fromRangeLine(scan, res=0.1, threshold=10)
         global_sdf.addLocalSDF(local_sdf)
 
         # plot robot location and heading
-        #plt.plot([x],[y], 'ro')
-        #plt.plot([x, x+(thetaLen*math.cos(math.radians(theta)))],[y, y+(thetaLen*math.sin(math.radians(theta)))], 'r-')
+        # (x,y,theta,_,lrData) = scan
+        # thetaLen = 0.5
+        # brgs = [brg for (brg,_) in lrData]
+        # maxBrg = max(brgs)
+        # minBrg = min(brgs)
+        # plt.plot([x],[y], 'bo')
+        # plt.plot([x, x+(2*thetaLen*math.cos(theta))],
+        #          [y, y+(2*thetaLen*math.sin(theta))],
+        #          'b-')
+        # plt.plot([x, x+(thetaLen*math.cos(theta + maxBrg))],
+        #          [y, y+(thetaLen*math.sin(theta + maxBrg))],
+        #          'r-')
+        # plt.plot([x, x+(thetaLen*math.cos(theta + minBrg))],
+        #          [y, y+(thetaLen*math.sin(theta + minBrg))],
+        #          'g-')
 
-        # plot a smaller robot location marker than above (and no heading)
-        plt.plot([x],[y], 'r+')
 
-        # plot laser scan data points
-        # plt.scatter(dx, dy, c=rngs)
-        # plt.colorbar()
+    global_sdf.plot(plt)
 
-    global_sdf.plotSurfaces(plt)
-
-    plt.axis('equal')
-    plt.xlabel('x pos')
-    plt.ylabel('y pos')
-    plt.savefig('scan.png')
+    # plt.axis('equal')
+    # plt.xlabel('x pos')
+    # plt.ylabel('y pos')
+    # plt.show()
+    # plt.savefig('scan.png')
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
