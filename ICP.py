@@ -111,6 +111,29 @@ class ICP(object):
         return P
 
     @staticmethod
+    def computeOriginRotation(A,B):
+        """
+        Compute the rotation matrix R that aligns points in A to points in B,
+        where A and B are first centered on the origin.
+
+        A and B are corresponding point sets, but are not required to be centered
+        around the origin
+
+        A are the model points
+        B are the data points
+        """
+        # center the point sets on the origin
+        muA = np.mean(A,1)
+        muB = np.mean(B,1)
+        Ap = (A.T - muA).T
+        Bp = (B.T - muB).T        
+
+        R = Ap.dot(Bp.T).dot(np.linalg.inv(Bp.dot(Bp.T)))
+        U,S,VT = np.linalg.svd(R)
+        R = U.dot(VT)
+        return R
+
+    @staticmethod
     def icp(A, B, N=5, e=1e-5, k=3):
         """
         Returns the Rotation and Translation matrices, R and T, that transform points in B
@@ -156,6 +179,10 @@ class ICP(object):
         # under the assumption of a small rotational angle theta, this should be okay
         Ti = muB - muA
 
+        #cBp, cAp, cE = ICP.correspondingPoints(Bp,Ap,k,ICP.pwSSE)
+        #Rorig = ICP.computeOriginRotation(cAp,cBp)
+        #print Rorig
+
         # iterate until error converges, or up to N iterations
         for i in range(N):
             # find the corresponding points in Ap for every point in Bi, using pwSSE as distance
@@ -189,6 +216,14 @@ class ICP(object):
 
         return R,T
         
+    @staticmethod
+    def convertRT(r,t):
+        """
+        Given R and T matrices that transform points from A to B,
+        return R' and T' matrices that transfrom points from B to A
+        """
+        return r.T, -t.dot(np.linalg.inv(r.T))
+
 
 def plotSets(A,B,C,R,T):
     plt.clf()
@@ -245,8 +280,17 @@ if __name__ == '__main__':
     # this is why t and T are different; applying the rotations to the two point sets
     # aligns the orientation of the set, but results in different translations to bring
     # the centers of mass together
-    print (np.mean(A,1) - np.mean(r.dot(B),1))
+    #print (np.mean(A,1) - np.mean(r.dot(B),1))
     
+    # this gives us the original T translation vector
+    #print -t.dot(np.linalg.inv(r.T))
+
+    Rp,Tp = ICP.convertRT(r,t)
+    print '\nRecovered R:'
+    print Rp
+    print 'Recovered T:'
+    print Tp
+
     # B = (R.dot(A).T + T).T
     # A' = rotation and translation from B that should transform the points to A
     Ap = (r.dot(B).T + t).T
