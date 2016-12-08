@@ -43,31 +43,49 @@ class ICP(object):
         return distance, nearest_pt
 
     @staticmethod
-    def correspondingPoints(a,b,distfunc):
+    def correspondingPoints(a,b,T,distfunc):
         """
-        for each point in a, find the point in b that is closest, according
-        to the provided distance function 'distfunc'
+        For each point in a, find the point in b that is closest, according
+        to the provided distance function 'distfunc'.
 
-        assumes a and b have shapes (k,m) and (k,n), where k is the dimensionality
+        Assumes a and b have shapes (k,m) and (k,n), where k is the dimensionality
         of the points, and m and n are the number of points in a and b, respectively
 
-        returns tuple (P,E) where P is shape (k,m) and E is shape (m)
-        P is the set of corresponding points, E is the distance for each point
+        Returns tuple (A, B, E) where A and B are shape (k,w), and E is shape(w)
+        A is the set of selected points from a
+        B is the set of corresponding points from b
+        E[i] is the distance/error value from A[i] to B[i]
+
+        Pairs A[i], B[i] are only accepted if they are not outliers if
+        E[i] <= T*stdv(E)
+
+        T is a scale factor for outlier thresholding. 
 
         """
-        P = np.zeros(a.shape)
-        E = np.zeros(a.shape[1])
+
+        # list of (error, index of element in a, index of element in b)
+        PE = []
         i = 0
         for i in range(a.shape[1]):
-            e, ip = distfunc(a[:,i], b)
-            E[i] = e
-            P[:,i] = b[:,ip]
+            # compute error from a[:,i] to nearest point in b
+            # also return ib, the index in b of nearest neighbor to a[:,i]
+            e, ib = distfunc(a[:,i], b)
+            PE.append((e,ib))
 
-        # TODO: trim points that have error > median(E) (or too large error)
-        # TODO: if two points in a match to same point in b, only use one of the points
-        #       from a, choosing the one with smaller distance
+        # compute outlier rejection threshold
+        stdv = np.std([pe[0] for pe in PE])
+        RT = T*stdv
 
-        return P,E
+        A = []
+        B = []
+        E = []
+        for i in range(len(PE)):
+            if (PE[i][0] <= RT):
+                A.append(a[:,i])
+                B.append(b[:,PE[i][1]])
+                E.append(PE[i][0])
+
+        return np.array(A).T, np.array(B).T, np.array(E)
 
     @staticmethod
     def computeRT(A,B,T):
@@ -93,7 +111,7 @@ class ICP(object):
         return P
 
     @staticmethod
-    def icp(A, B, N=5, e=1e-5):
+    def icp(A, B, N=5, e=1e-5, k=3):
         """
         Returns the Rotation and Translation matrices, R and T, that transform points in B
         to points in A.
@@ -143,7 +161,7 @@ class ICP(object):
             # find the corresponding points in Ap for every point in Bi, using pwSSE as distance
             # Bi is the current set of data points (with incremental R and T applied each step)
             # P is the set of points from Ap that are closest to each point in Bi
-            P,E = ICP.correspondingPoints(Bi,Ap,ICP.pwSSE)
+            pBi, pAp, E = ICP.correspondingPoints(Bi,Ap,k,ICP.pwSSE)
 
             # compute the error
             err = np.sum(E)
@@ -156,7 +174,7 @@ class ICP(object):
 
             # compute dR and dT, the incremental Rotation and Translation matrices between
             # corresponding point sets Bi and P
-            dR,dT = ICP.computeRT(P,Bi,Ti)
+            dR,dT = ICP.computeRT(pAp,pBi,Ti)
 
             # update R using dR
             R = dR.dot(R)
@@ -196,7 +214,8 @@ if __name__ == '__main__':
 
     N = 10
     e = 1e-5
-    
+    k = 3
+
     # some random points
     A = np.random.rand(2,10)
     theta = (np.random.rand(1)*np.pi/4)[0]
@@ -209,7 +228,7 @@ if __name__ == '__main__':
     print np.mean(A,1)
     print np.mean(B,1)
 
-    r,t = ICP.icp(A,B,N,e)
+    r,t = ICP.icp(A,B,N,e,k)
     print '\nActual R:'
     print R
     print 'Estimated R:'
@@ -219,6 +238,14 @@ if __name__ == '__main__':
     print T
     print 'Estimated T:'
     print t
+
+    # this gives t also
+    # r is a rotation performed on points B
+    # R is a rotation performed on points A
+    # this is why t and T are different; applying the rotations to the two point sets
+    # aligns the orientation of the set, but results in different translations to bring
+    # the centers of mass together
+    print (np.mean(A,1) - np.mean(r.dot(B),1))
     
     # B = (R.dot(A).T + T).T
     # A' = rotation and translation from B that should transform the points to A
