@@ -353,7 +353,7 @@ class ICP(object):
             # update guess for T using the corresponding point sets
             T = np.mean(cA,1) - np.mean(R.dot(cBp),1)
 
-        return R,T,A,B,errors
+        return R,T,A,B,errors,(atheta,dx,dy,btheta)
 
     @staticmethod
     def recoverRT(r,t):

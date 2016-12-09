@@ -28,6 +28,21 @@ def plotPoints(points, c='k', fname='out.png'):
     plt.show()
     plt.savefig('{0}'.format(fname))
 
+def plotRobot(x,y,theta,c='g',thetaLen=0.5):
+    maxBrg = np.pi/2
+    minBrg = -np.pi/2
+    plt.plot([x],[y], '{0}o'.format(c))
+    plt.plot([x, x+(2*thetaLen*math.cos(theta))],
+             [y, y+(2*thetaLen*math.sin(theta))],
+             '{0}-'.format(c))
+    plt.plot([x, x+(thetaLen*math.cos(theta + maxBrg))],
+             [y, y+(thetaLen*math.sin(theta + maxBrg))],
+             'r-')
+    plt.plot([x, x+(thetaLen*math.cos(theta + minBrg))],
+             [y, y+(thetaLen*math.sin(theta + minBrg))],
+             'g-')
+    plt.show()
+
 def plotSingleScan(scan, c='k', rngMax=10.0):
     # plot robot location and heading
     (x,y,theta,_,lrData) = scan
@@ -120,8 +135,10 @@ def runICP(scans,a,b,fname):
     e = 1e-5
     k = 3
     maxRng = 10.0
-    R,T,A,B,errors = ICP.laserDataIcp(scans[a],scans[b], N, e, k, ICP.pwSSE, maxRng)
+    R,T,A,B,errors,loc = ICP.laserDataIcp(scans[a],scans[b], N, e, k, ICP.pwSSE, maxRng)
     plt.clf()
+    plotRobot(0,0,loc[0],'k')
+    plotRobot(loc[1],loc[2],loc[3],'b')
     plotPoints(A.T, 'k', fname)
     plotPoints(B.T, 'b', fname)
     C = (R.dot(B).T + T).T
@@ -176,5 +193,9 @@ if __name__ == '__main__':
                 print '{0}, {1}'.format(rawParser.rangeData[i][2],rawParser.rangeData[i-1][2])
         """
 
+        outdir = os.path.join(os.getcwd(),'scans')
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
         for i in range(1,len(rawParser.rangeData)):
-            runICP(rawParser.rangeData,i-1,i,'laserICP-{0}.png'.format(str(i).zfill(4)))
+            runICP(rawParser.rangeData,i-1,i,os.path.abspath(os.path.join(outdir,'laserICP-{0}.png'.format(str(i).zfill(6)))))
