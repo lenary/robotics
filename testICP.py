@@ -70,7 +70,6 @@ def singleScanData(scan, offset, rngMax=10.0):
     #print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
 
     lrData = [(brg,rng) for (brg,rng) in lrData if rng < rngMax]
-    thetaLen = 0.5
     brgs = [brg for (brg,_) in lrData]
     maxBrg = max(brgs)
     minBrg = min(brgs)
@@ -115,6 +114,18 @@ def correctScanData(scans, offset):
 
     return corData
 
+def runICP(scans,a,b,fname):
+    # ICP settings
+    N = 10
+    e = 1e-5
+    k = 3
+    maxRng = 10.0
+    R,T,A,B,errors = ICP.laserDataIcp(scans[a],scans[b], N, e, k, ICP.pwSSE, maxRng)
+    plt.clf()
+    plotPoints(A.T, 'k', fname)
+    plotPoints(B.T, 'b', fname)
+    C = (R.dot(B).T + T).T
+    plotPoints(C.T, 'm', fname)
 
 def plotPos(posData, fname):
     """
@@ -158,8 +169,12 @@ if __name__ == '__main__':
         print 'len laser cor {0}'.format(len(corParser.rangeData))
         plotPos(corParser.rangeData, 'pos-laser-cor.png')
 
-
+        """
         thetaLim = np.pi/4
         for i in range(1,len(rawParser.rangeData)):
             if abs(rawParser.rangeData[i][2] - rawParser.rangeData[i-1][2]) > thetaLim:
                 print '{0}, {1}'.format(rawParser.rangeData[i][2],rawParser.rangeData[i-1][2])
+        """
+
+        for i in range(1,len(rawParser.rangeData)):
+            runICP(rawParser.rangeData,i-1,i,'laserICP-{0}.png'.format(str(i).zfill(4)))

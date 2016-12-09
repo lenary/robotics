@@ -88,6 +88,8 @@ class CarmenParser(DataParser):
     def plotPos(self, fname):
         """
         Plot robot position from odometry data
+
+        Position is adjusted by any initial offset in x and y, but not by any angle offset
         """
         x = [p[0]-self.posOffset[0] for p in self.posData]
         y = [p[1]-self.posOffset[1] for p in self.posData]
