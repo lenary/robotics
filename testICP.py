@@ -18,7 +18,7 @@ if os.environ.get('DISPLAY') is None:
 
 import matplotlib.pyplot as plt
 
-def plotPoints(points, c='k'):
+def plotPoints(points, c='k', fname='out.png'):
     px,py = zip(*points)
     plt.plot(list(px),list(py),'{0}.'.format(c))
 
@@ -26,13 +26,13 @@ def plotPoints(points, c='k'):
     plt.xlabel('x pos')
     plt.ylabel('y pos')
     plt.show()
-    plt.savefig('testICP.png')
+    plt.savefig('{0}'.format(fname))
 
 def plotSingleScan(scan, c='k', rngMax=10.0):
     # plot robot location and heading
     (x,y,theta,_,lrData) = scan
 
-    print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
+    #print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
 
     lrData = [(brg,rng) for (brg,rng) in lrData if rng < rngMax]
 
@@ -55,7 +55,7 @@ def plotSingleScan(scan, c='k', rngMax=10.0):
 
     points = [(x + rng*math.cos(theta+brg), y + rng*math.sin(theta+brg)) for (brg,rng) in lrData]
 
-    plotPoints(points, c)
+    plotPoints(points, c, 'laserICP.png')
 
     DATA = np.zeros((2,len(points)))
     for i in range(len(points)):
@@ -63,66 +63,103 @@ def plotSingleScan(scan, c='k', rngMax=10.0):
         DATA[1,i] = points[i][1]
     return DATA
 
-def singleScanData(scan, rngMax=10.0):
+def singleScanData(scan, offset, rngMax=10.0):
     # plot robot location and heading
     (x,y,theta,_,lrData) = scan
 
-    print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
+    #print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
 
     lrData = [(brg,rng) for (brg,rng) in lrData if rng < rngMax]
     thetaLen = 0.5
     brgs = [brg for (brg,_) in lrData]
     maxBrg = max(brgs)
     minBrg = min(brgs)
-    points = [(x + rng*math.cos(theta+brg), y + rng*math.sin(theta+brg)) for (brg,rng) in lrData]
+    points = [(x + rng*math.cos(theta+brg) - offset[0], y + rng*math.sin(theta+brg) - offset[1]) for (brg,rng) in lrData]
     DATA = np.zeros((2,len(points)))
     for i in range(len(points)):
         DATA[0,i] = points[i][0]
         DATA[1,i] = points[i][1]
-    return DATA
+    return x-offset[0],y-offset[1],DATA
+
+def correctScanData(scans, offset):
+    # scans[i] = (x,y,theta,ts,readings)
+    # corData[i] = (x,y)
+    corData = []
+
+    # get first scan
+    ax,ay,A = singleScanData(scans[0], offset, 20.0)
+    corData.append((ax,ay))
+
+    # ICP settings
+    N = 10
+    e = 1e-5
+    k = 3
+    T = np.zeros(2)
+
+    R = np.eye(2)
+    T = np.zeros(2)
+
+    for i in range(1,len(scans)):
+        # get original offset adjusted position and scan points
+        bx,by,B = singleScanData(scans[i], offset, 20.0)
+        # run ICP to find R and T
+        dR,dT = ICP.laserDataIcp(A,B,N,e,k)
+
+        R = dR.dot(R)
+        T = T + dT
+
+        pos = np.array([bx,by])
+        pos = (R.dot(pos.T).T + T).T
+        corData.append((pos[0], pos[1]))
+        A = B
+
+    return corData
+
+
+def plotPos(posData, fname):
+    """
+    Plot robot position from odometry data
+    """
+    x = [p[0] for p in posData]
+    y = [p[1] for p in posData]
+    plt.clf()
+    plt.plot(x, y, 'k.')
+    plt.axis('equal')
+    plt.xlabel('x pos')
+    plt.ylabel('y pos')
+    plt.savefig('{0}'.format(fname))
+
 
 if __name__ == '__main__':
-    if len(sys.argv) == 2:
-        fpin = sys.argv[1]
-        print(fpin)
+    if len(sys.argv) != 3:
+        print '{0} rawfile corfile'.format(sys.argv[0])
+    else:
+        frawIn = sys.argv[1]
+        fcorIn = sys.argv[2]
+        print(frawIn)
+        print(fcorIn)
 
-        parser = CarmenParser()
-        parser.parse(fpin)
+        rawParser = CarmenParser()
+        rawParser.parse(frawIn)
 
-        A = plotSingleScan(parser.rangeData[0])
+        corParser = CarmenParser()
+        corParser.parse(fcorIn)
 
-        # ICP settings
-        N = 10
-        e = 1e-5
-        k = 3
+        # plot the corrected position data
+        rawParser.plotPos('pos-raw.png')
+        corParser.plotPos('pos-cor.png')
 
-        for i in range(1,10):
-            B = singleScanData(parser.rangeData[i])
-            R,T = ICP.icp(A,B,N,e,k)
-            Bp = (R.dot(B).T + T).T
-            BpPoints = [(p[0],p[1]) for p in Bp.T]
-            plotPoints(BpPoints)
+        # attempt to plot path data by correcting the raw data using ICP to align consecutive scans
+        #correctedRawScanPosData = correctScanData(rawParser.rangeData, rawParser.posOffset)
+        #plotPos(correctedRawScanPosData, 'pos-rawcor.png')
 
-        """
-        A = plotSingleScan(parser.rangeData[12])
-        B = plotSingleScan(parser.rangeData[13], 'r')
+        print 'len laser raw {0}'.format(len(rawParser.rangeData))
+        plotPos(rawParser.rangeData, 'pos-laser-raw.png')
+        print 'len laser cor {0}'.format(len(corParser.rangeData))
+        plotPos(corParser.rangeData, 'pos-laser-cor.png')
 
-        # ICP settings
-        N = 10
-        e = 1e-5
-        k = 3
-        
-        R,T = ICP.icp(A, B, N, e, k)
 
-        print R
-        print T
-
-        #cA,cB,E,iA,iB = ICP.correspondingPoints(A,B,k,ICP.pwSSE)
-        #ApPoints = [(p[0],p[1]) for p in cB.T]
-        #plotPoints(ApPoints,'m')
-
-        Ap = (R.dot(B).T + T).T
-        ApPoints = [(p[0],p[1]) for p in Ap.T]
-        #plotPoints(ApPoints,'m')
-        """
-        
+        thetaLim = np.pi/4
+        for i in range(1,len(rawParser.rangeData)):
+            if abs(rawParser.rangeData[i][2] - rawParser.rangeData[i-1][2]) > thetaLim:
+                print '{0}, {1}'.format(rawParser.rangeData[i][2],rawParser.rangeData[i-1][2])

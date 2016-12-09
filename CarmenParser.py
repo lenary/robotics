@@ -18,9 +18,18 @@ TRUEPOS true_x true_y true_theta odom_x odom_y odom_theta
 from DataParser import DataParser
 import re
 import math
+import os
+
+# check for DISPLAY environment variable and use matplotlib 'Agg' if not present
+# this is a check for Windows Linux Subsystem GUI issues
+if os.environ.get('DISPLAY') is None:
+    import matplotlib
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 class CarmenParser(DataParser):
     def parse(self, file_in):
+        self.posData = []
         fin = open(file_in, 'r')
         for l in fin:
             line = l.strip().split(' ')
@@ -69,3 +78,23 @@ class CarmenParser(DataParser):
                             pass
 
                 self.params[param_name] = param_val
+
+        if self.posData:
+            self.posOffset = (self.posData[0][0], self.posData[0][1], self.posData[0][1])
+        else:
+            self.posOffset = (0.0, 0.0, 0.0)
+
+
+    def plotPos(self, fname):
+        """
+        Plot robot position from odometry data
+        """
+        x = [p[0]-self.posOffset[0] for p in self.posData]
+        y = [p[1]-self.posOffset[1] for p in self.posData]
+        plt.clf()
+        plt.plot(x, y, 'k.')
+        plt.axis('equal')
+        plt.xlabel('x pos')
+        plt.ylabel('y pos')
+        plt.savefig('{0}'.format(fname))
+

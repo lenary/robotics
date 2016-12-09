@@ -45,7 +45,7 @@ class ICP(object):
         return distance, nearest_pt
 
     @staticmethod
-    def correspondingPoints(a,b,sf,distfunc):
+    def correspondingPoints(a,b,sf=3.0,distfunc=pwSSE):
         """
         For each point in a, find the point in b that is closest, according
         to the provided distance function 'distfunc'.
@@ -66,10 +66,7 @@ class ICP(object):
         sf is a scale factor for outlier thresholding. 
 
         """
-
-        # TODO: cleanup, ensure each point in a and b only appears once
-
-        # list of (error, index of element in a, index of element in b)
+        # list of (error, index of element in b)
         PE = []
         i = 0
         for i in range(a.shape[1]):
@@ -82,12 +79,6 @@ class ICP(object):
         stdv = np.std([pe[0] for pe in PE])
         RT = sf*stdv
 
-        # remove point pairs that are outliers
-        #A = []
-        #B = []
-        #E = []
-        #iA = []
-        #iB = []
         bToa = {}
         for i in range(len(PE)):
             if (PE[i][0] <= RT):
@@ -96,12 +87,6 @@ class ICP(object):
                     bToa[PE[i][1]] = [data]
                 else:
                     bToa[PE[i][1]].append(data)
-
-                #A.append(a[:,i])
-                #B.append(b[:,PE[i][1]])
-                #E.append(PE[i][0])
-                #iA.append(i)
-                #iB.append(PE[i][1])
 
         # at this point, each point in a is matched to a point in b
         # but, the same point in b may be present in B multiple times
@@ -115,7 +100,7 @@ class ICP(object):
         return np.array(A).T, np.array(B).T, np.array(E), iA, iB
 
     @staticmethod
-    def computeR(A,B):
+    def computeRotation(A,B):
         """
         Given corresponding point sets A and B, compute the Rotation and Translation
         matrices R and T, respectively, using SVD, with initial translation guess T
@@ -160,13 +145,93 @@ class ICP(object):
         return P
 
     @staticmethod
-    def icp(A, B, N=5, e=1e-5, k=3):
+    def icp(A, B, N=5, e=1e-5, k=3, distfunc=pwSSE):
         """
         Returns the Rotation and Translation matrices, R and T, that transform points in B
         to points in A.
         
         Algorithm runs until error between iterations is <= e, or N iterations occur.
 
+        Assumptions:
+        1. A and B have shape (k,n) and (k,m), respectively, where k is the dimensionality of the
+        points in A and B
+        2. A are the model points, B are the data points
+        3. The Rotation and Translation between A and B are small, especially Rotation, for some
+        definition of small
+        """
+
+        assert(A.shape[0] == B.shape[0])
+
+        ### ICP Pre-Processing
+        # clean up the point sets
+        A = ICP.removeOutliers(A)
+        B = ICP.removeOutliers(B)
+
+        # create point sets Ap and Bp that are centered around (0,0) by subtracting
+        # centers of mass muA and muB from A and B, respectively
+        muA = np.mean(A,1)
+        muB = np.mean(B,1)
+        Ap = (A.T - muA).T
+        Bp = (B.T - muB).T
+
+        ### Initialize variables for iteration
+        # rotation and translation matrices
+        R=np.eye(A.shape[0])
+        T=np.zeros(A.shape[0])
+        # list of the errors at each step
+        errors = list()
+        # current error
+        old_error = np.inf
+
+        ### ICP iteration
+
+        # create a copy of Bp that is used and updated each iteration
+        # Bi should get closer to Ap every iteration
+        Bi = np.copy(Bp)
+
+        # compute a guess at T based on difference of centers of mass
+        # under the assumption of a small rotational angle theta, this should be okay
+        Ti = np.copy(T)
+
+        # iterate until error converges, or up to N iterations
+        for i in range(N):
+            # find the corresponding points between A and Bp
+            cBi, cAp, E, iB, iA = ICP.correspondingPoints(Bi,Ap,k,distfunc)
+
+            # compute the error
+            err = np.sum(E)
+            #print err
+            # check for convergence
+            if abs(old_error - err) > e:
+                old_error = err
+            else:
+                break
+
+            # compute dR, the incremental Rotation matrix between
+            # corresponding point sets pBi and pAp
+            dR = ICP.computeRotation(cAp,cBi)
+
+            # update R using dR
+            R = dR.dot(R)
+            # update guess for T using the corresponding point sets
+            AA = np.array([A[:,i] for i in iA]).T
+            BB = np.array([B[:,i] for i in iB]).T
+            T = np.mean(AA,1) - np.mean(R.dot(BB),1)
+
+            Ti = np.mean(Ap,1) - np.mean(R.dot(Bi),1)
+            Bi = (R.dot(Bp).T + Ti).T
+
+        return R,T
+        
+    @staticmethod
+    def laserDataIcp(A, B, N=5, e=1e-5, k=3, distfunc=pwSSE):
+        """
+        ICP specialized for robot laser range scanner data
+
+        Returns the Rotation and Translation matrices, R and T, that transform points in B
+        to points in A.
+        
+        Algorithm runs until error between iterations is <= e, or N iterations occur.
         Assumptions:
         1. A and B have shape (k,n) and (k,m), respectively, where k is the dimensionality of the
         points in A and B
@@ -222,7 +287,7 @@ class ICP(object):
 
             # compute the error
             err = np.sum(E)
-            print err
+            #print err
             # check for convergence
             if abs(old_error - err) > e:
                 old_error = err
@@ -239,12 +304,12 @@ class ICP(object):
             T = np.mean(cA,1) - np.mean(R.dot(cBp),1)
 
         return R,T
-        
+
     @staticmethod
     def recoverRT(r,t):
         """
-        Given R and T matrices that transform points from A to B,
-        return R' and T' matrices that transfrom points from B to A
+        Given R and T matrices that transform points from B to A,
+        return R' and T' matrices that transfrom points from A to B
         """
         return r.T, -t.dot(np.linalg.inv(r.T))
 
@@ -267,40 +332,6 @@ def plotSets(A,B,C,R,T):
     plt.xlabel('x')
     plt.ylabel('y')
     plt.savefig('points.png')
-
-def runTest():
-    # create a random origin point
-    #p = np.random.rand(1,2)
-    p = np.array([[0,0]])
-    # create a random odom transition (alpha, dr, beta)
-    alphaBetaMax = np.pi/3
-    drMax = 10.0
-    odom = np.random.rand(1,3)
-    odom[0,0] = odom[0,0]*alphaBetaMax
-    odom[0,1] = odom[0,1]*drMax
-    odom[0,2] = odom[0,2]*alphaBetaMax
-
-    # compute R and T from p and odom
-    # assumes p is at origin
-    ranges = np.random.rand(180)
-    defR = 4.0
-    defdR = 0.5
-    ranges = ranges*defdR + defR
-
-    nPoints = ranges.size
-
-    points = np.array([[ranges[i]*np.cos(np.pi*i/nPoints), ranges[i]*np.sin(np.pi*i/nPoints)] for i in range(nPoints)])
-
-    plt.clf()
-    plt.plot([x[0] for x in points], [x[1] for x in points], 'k.')
-    muA = np.mean(points,0)
-    plt.plot(muA[0],muA[1],'ko')
-
-    plt.axis('equal')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.savefig('scanPoints.png')
-
 
 if __name__ == '__main__':
 
@@ -346,6 +377,3 @@ if __name__ == '__main__':
         print 'pass'
     else:
         print 'fail'
-
-
-    runTest()
