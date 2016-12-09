@@ -9,7 +9,7 @@ if os.environ.get('DISPLAY') is None:
     matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
-
+from operator import itemgetter
 
 """
 Iterative Closest Point algorithm
@@ -29,6 +29,8 @@ class ICP(object):
         Squared Distance from p to closest point in a
         p is a single point [x,y]
         a is an 2 x n array of points (column vector per point)
+
+        This function serves as the default error/distance metric for ICP
         """
         difference = (a.T - p).T
         # x and y columns
@@ -43,7 +45,7 @@ class ICP(object):
         return distance, nearest_pt
 
     @staticmethod
-    def correspondingPoints(a,b,T,distfunc):
+    def correspondingPoints(a,b,sf,distfunc):
         """
         For each point in a, find the point in b that is closest, according
         to the provided distance function 'distfunc'.
@@ -51,17 +53,21 @@ class ICP(object):
         Assumes a and b have shapes (k,m) and (k,n), where k is the dimensionality
         of the points, and m and n are the number of points in a and b, respectively
 
-        Returns tuple (A, B, E) where A and B are shape (k,w), and E is shape(w)
+        Returns tuple (A, B, E, iA, iB) where A and B are shape (k,w), and E is shape(w)
         A is the set of selected points from a
         B is the set of corresponding points from b
         E[i] is the distance/error value from A[i] to B[i]
+        iA are the indices of points selected from a
+        iB are the indices of corresponding points from b
 
         Pairs A[i], B[i] are only accepted if they are not outliers if
         E[i] <= T*stdv(E)
 
-        T is a scale factor for outlier thresholding. 
+        sf is a scale factor for outlier thresholding. 
 
         """
+
+        # TODO: cleanup, ensure each point in a and b only appears once
 
         # list of (error, index of element in a, index of element in b)
         PE = []
@@ -74,21 +80,42 @@ class ICP(object):
 
         # compute outlier rejection threshold
         stdv = np.std([pe[0] for pe in PE])
-        RT = T*stdv
+        RT = sf*stdv
 
-        A = []
-        B = []
-        E = []
+        # remove point pairs that are outliers
+        #A = []
+        #B = []
+        #E = []
+        #iA = []
+        #iB = []
+        bToa = {}
         for i in range(len(PE)):
             if (PE[i][0] <= RT):
-                A.append(a[:,i])
-                B.append(b[:,PE[i][1]])
-                E.append(PE[i][0])
+                data = (a[:,i],b[:,PE[i][1]],PE[i][0],i,PE[i][1])
+                if not PE[i][1] in bToa:
+                    bToa[PE[i][1]] = [data]
+                else:
+                    bToa[PE[i][1]].append(data)
 
-        return np.array(A).T, np.array(B).T, np.array(E)
+                #A.append(a[:,i])
+                #B.append(b[:,PE[i][1]])
+                #E.append(PE[i][0])
+                #iA.append(i)
+                #iB.append(PE[i][1])
+
+        # at this point, each point in a is matched to a point in b
+        # but, the same point in b may be present in B multiple times
+        # (i.e., it may be the closest point to multiple points from a)
+        data = []
+        for k,v in bToa.iteritems():
+            data.append(min(v,key=itemgetter(2)))
+
+        
+        A,B,E,iA,iB = zip(*data)
+        return np.array(A).T, np.array(B).T, np.array(E), iA, iB
 
     @staticmethod
-    def computeRT(A,B,T):
+    def computeR(A,B):
         """
         Given corresponding point sets A and B, compute the Rotation and Translation
         matrices R and T, respectively, using SVD, with initial translation guess T
@@ -96,19 +123,10 @@ class ICP(object):
         A are the model points
         B are the data points
         """
-        R = ((A.T - T).T).dot(B.T).dot(np.linalg.inv(B.dot(B.T)))
+        R = A.dot(B.T).dot(np.linalg.inv(B.dot(B.T)))
         U,S,VT = np.linalg.svd(R)
         R = U.dot(VT)
-        T = np.mean(A,1) - np.mean(R.dot(B),1)
-        return R, T
-
-    @staticmethod
-    def removeOutliers(P):
-        """
-        Remove outlier points from dataset P
-        """
-        # TODO: for now , just return P (i.e., assume no outliers)
-        return P
+        return R
 
     @staticmethod
     def computeOriginRotation(A,B):
@@ -117,7 +135,7 @@ class ICP(object):
         where A and B are first centered on the origin.
 
         A and B are corresponding point sets, but are not required to be centered
-        around the origin
+        around the origin, and will be recentered to the origin before computing R
 
         A are the model points
         B are the data points
@@ -132,6 +150,14 @@ class ICP(object):
         U,S,VT = np.linalg.svd(R)
         R = U.dot(VT)
         return R
+
+    @staticmethod
+    def removeOutliers(P, origin=(0,0), R=5.0):
+        """
+        Remove outlier points from dataset P
+        """
+        # TODO: for now , just return P (i.e., assume no outliers)
+        return P
 
     @staticmethod
     def icp(A, B, N=5, e=1e-5, k=3):
@@ -177,7 +203,7 @@ class ICP(object):
 
         # compute a guess at T based on difference of centers of mass
         # under the assumption of a small rotational angle theta, this should be okay
-        Ti = muB - muA
+        Ti = np.copy(T)#muB - muA
 
         #cBp, cAp, cE = ICP.correspondingPoints(Bp,Ap,k,ICP.pwSSE)
         #Rorig = ICP.computeOriginRotation(cAp,cBp)
@@ -188,7 +214,7 @@ class ICP(object):
             # find the corresponding points in Ap for every point in Bi, using pwSSE as distance
             # Bi is the current set of data points (with incremental R and T applied each step)
             # P is the set of points from Ap that are closest to each point in Bi
-            pBi, pAp, E = ICP.correspondingPoints(Bi,Ap,k,ICP.pwSSE)
+            pBi, pAp, E, iA, iB = ICP.correspondingPoints(Bi,Ap,k,ICP.pwSSE)
 
             # compute the error
             err = np.sum(E)
@@ -199,15 +225,17 @@ class ICP(object):
             else:
                 break
 
-            # compute dR and dT, the incremental Rotation and Translation matrices between
-            # corresponding point sets Bi and P
-            dR,dT = ICP.computeRT(pAp,pBi,Ti)
+            # compute dR, the incremental Rotation matrix between
+            # corresponding point sets pBi and pAp
+            dR = ICP.computeR(pAp,pBi)
 
             # update R using dR
             R = dR.dot(R)
 
             # update guess for T
-            T = np.mean(A,1) - np.mean(R.dot(B),1)
+            AA = np.array([A[:,i] for i in iA]).T
+            BB = np.array([B[:,i] for i in iB]).T
+            T = np.mean(AA,1) - np.mean(R.dot(BB),1)
 
             # update incremental T
             Ti = np.mean(Ap,1) - np.mean(R.dot(Bi),1)
@@ -217,7 +245,7 @@ class ICP(object):
         return R,T
         
     @staticmethod
-    def convertRT(r,t):
+    def recoverRT(r,t):
         """
         Given R and T matrices that transform points from A to B,
         return R' and T' matrices that transfrom points from B to A
@@ -244,6 +272,39 @@ def plotSets(A,B,C,R,T):
     plt.ylabel('y')
     plt.savefig('points.png')
 
+def runTest():
+    # create a random origin point
+    #p = np.random.rand(1,2)
+    p = np.array([[0,0]])
+    # create a random odom transition (alpha, dr, beta)
+    alphaBetaMax = np.pi/3
+    drMax = 10.0
+    odom = np.random.rand(1,3)
+    odom[0,0] = odom[0,0]*alphaBetaMax
+    odom[0,1] = odom[0,1]*drMax
+    odom[0,2] = odom[0,2]*alphaBetaMax
+
+    # compute R and T from p and odom
+    # assumes p is at origin
+    ranges = np.random.rand(180)
+    defR = 4.0
+    defdR = 0.5
+    ranges = ranges*defdR + defR
+
+    nPoints = ranges.size
+
+    points = np.array([[ranges[i]*np.cos(np.pi*i/nPoints), ranges[i]*np.sin(np.pi*i/nPoints)] for i in range(nPoints)])
+
+    plt.clf()
+    plt.plot([x[0] for x in points], [x[1] for x in points], 'k.')
+    muA = np.mean(points,0)
+    plt.plot(muA[0],muA[1],'ko')
+
+    plt.axis('equal')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.savefig('scanPoints.png')
+
 
 if __name__ == '__main__':
 
@@ -254,7 +315,7 @@ if __name__ == '__main__':
     # some random points
     A = np.random.rand(2,10)
     theta = (np.random.rand(1)*np.pi/4)[0]
-    T = np.array([2.5, 5.0])
+    T = np.random.rand(1,2)#np.array([2.5, 5.0])
     # build rotation matrix
     R = np.array([[np.cos(theta), -1.0*np.sin(theta)],[np.sin(theta), np.cos(theta)]])
     # compute rotated and translated points (perfect transformation)
@@ -274,18 +335,7 @@ if __name__ == '__main__':
     print 'Estimated T:'
     print t
 
-    # this gives t also
-    # r is a rotation performed on points B
-    # R is a rotation performed on points A
-    # this is why t and T are different; applying the rotations to the two point sets
-    # aligns the orientation of the set, but results in different translations to bring
-    # the centers of mass together
-    #print (np.mean(A,1) - np.mean(r.dot(B),1))
-    
-    # this gives us the original T translation vector
-    #print -t.dot(np.linalg.inv(r.T))
-
-    Rp,Tp = ICP.convertRT(r,t)
+    Rp,Tp = ICP.recoverRT(r,t)
     print '\nRecovered R:'
     print Rp
     print 'Recovered T:'
@@ -295,3 +345,11 @@ if __name__ == '__main__':
     # A' = rotation and translation from B that should transform the points to A
     Ap = (r.dot(B).T + t).T
     plotSets(A, B, Ap, r, T)
+
+    if (np.sum(T-Tp) < e and np.sum(R-Rp) < e):
+        print 'pass'
+    else:
+        print 'fail'
+
+
+    runTest()
