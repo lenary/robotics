@@ -63,6 +63,23 @@ def plotSingleScan(scan, c='k', rngMax=10.0):
         DATA[1,i] = points[i][1]
     return DATA
 
+def singleScanData(scan, rngMax=10.0):
+    # plot robot location and heading
+    (x,y,theta,_,lrData) = scan
+
+    print '(x,y,theta,deg) = ({0},{1},{2},{3})'.format(x,y,theta,np.rad2deg(theta))
+
+    lrData = [(brg,rng) for (brg,rng) in lrData if rng < rngMax]
+    thetaLen = 0.5
+    brgs = [brg for (brg,_) in lrData]
+    maxBrg = max(brgs)
+    minBrg = min(brgs)
+    points = [(x + rng*math.cos(theta+brg), y + rng*math.sin(theta+brg)) for (brg,rng) in lrData]
+    DATA = np.zeros((2,len(points)))
+    for i in range(len(points)):
+        DATA[0,i] = points[i][0]
+        DATA[1,i] = points[i][1]
+    return DATA
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
@@ -74,7 +91,21 @@ if __name__ == '__main__':
 
         A = plotSingleScan(parser.rangeData[0])
 
-        B = plotSingleScan(parser.rangeData[1], 'r')
+        # ICP settings
+        N = 10
+        e = 1e-5
+        k = 3
+
+        for i in range(1,10):
+            B = singleScanData(parser.rangeData[i])
+            R,T = ICP.icp(A,B,N,e,k)
+            Bp = (R.dot(B).T + T).T
+            BpPoints = [(p[0],p[1]) for p in Bp.T]
+            plotPoints(BpPoints)
+
+        """
+        A = plotSingleScan(parser.rangeData[12])
+        B = plotSingleScan(parser.rangeData[13], 'r')
 
         # ICP settings
         N = 10
@@ -90,7 +121,8 @@ if __name__ == '__main__':
         #ApPoints = [(p[0],p[1]) for p in cB.T]
         #plotPoints(ApPoints,'m')
 
-        Ap = (R.dot(B).T).T
+        Ap = (R.dot(B).T + T).T
         ApPoints = [(p[0],p[1]) for p in Ap.T]
-        plotPoints(ApPoints,'m')
+        #plotPoints(ApPoints,'m')
+        """
         

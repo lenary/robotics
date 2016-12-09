@@ -180,30 +180,32 @@ class ICP(object):
         A = ICP.removeOutliers(A)
         B = ICP.removeOutliers(B)
 
-        # create point sets Ap and Bp that are centered around (0,0) by subtracting
-        # centers of mass muA and muB from A and B, respectively
-        muA = np.mean(A,1)
-        muB = np.mean(B,1)
-        Ap = (A.T - muA).T
-        Bp = (B.T - muB).T
-
         ### Initialize variables for iteration
+        # rotation and translation matrices
+        assert(A.shape[0] == B.shape[0])
+        R=np.eye(A.shape[0])
+        T=np.zeros(A.shape[0])
         # list of the errors at each step
         errors = list()
-
-        # Rotation and Translation matrices
-        R = np.eye(A.shape[0])
-        T = np.zeros(A.shape[0])
         # current error
         old_error = np.inf
 
+        ### ICP iteration
+
+        # create point sets Ap and Bp that are centered around (0,0) by subtracting
+        # centers of mass muA and muB from A and B, respectively
+        #muA = np.mean(A,1)
+        #muB = np.mean(B,1)
+        #Ap = (A.T - muA).T
+        #Bp = (B.T - muB).T
+
         # create a copy of Bp that is used and updated each iteration
         # Bi should get closer to Ap every iteration
-        Bi = np.copy(Bp)
+        #Bi = np.copy(Bp)
 
         # compute a guess at T based on difference of centers of mass
         # under the assumption of a small rotational angle theta, this should be okay
-        Ti = np.copy(T)#muB - muA
+        #Ti = np.copy(T)#muB - muA
 
         #cBp, cAp, cE = ICP.correspondingPoints(Bp,Ap,k,ICP.pwSSE)
         #Rorig = ICP.computeOriginRotation(cAp,cBp)
@@ -211,10 +213,12 @@ class ICP(object):
 
         # iterate until error converges, or up to N iterations
         for i in range(N):
-            # find the corresponding points in Ap for every point in Bi, using pwSSE as distance
-            # Bi is the current set of data points (with incremental R and T applied each step)
-            # P is the set of points from Ap that are closest to each point in Bi
-            pBi, pAp, E, iA, iB = ICP.correspondingPoints(Bi,Ap,k,ICP.pwSSE)
+            # First, apply current R and T to B, then find the corresponding points between
+            # A and B, to generate a new point set B'
+            Bp = (R.dot(B).T + T).T
+
+            # find the corresponding points between A and Bp
+            cBp, cA, E, iB, iA = ICP.correspondingPoints(Bp,A,k,ICP.pwSSE)
 
             # compute the error
             err = np.sum(E)
@@ -227,20 +231,12 @@ class ICP(object):
 
             # compute dR, the incremental Rotation matrix between
             # corresponding point sets pBi and pAp
-            dR = ICP.computeR(pAp,pBi)
+            dR = ICP.computeOriginRotation(cA,cBp)
 
             # update R using dR
             R = dR.dot(R)
-
-            # update guess for T
-            AA = np.array([A[:,i] for i in iA]).T
-            BB = np.array([B[:,i] for i in iB]).T
-            T = np.mean(AA,1) - np.mean(R.dot(BB),1)
-
-            # update incremental T
-            Ti = np.mean(Ap,1) - np.mean(R.dot(Bi),1)
-            # update Bi
-            Bi = (R.dot(Bp).T + Ti).T
+            # update guess for T using the corresponding point sets
+            T = np.mean(cA,1) - np.mean(R.dot(cBp),1)
 
         return R,T
         
