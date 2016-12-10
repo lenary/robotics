@@ -131,10 +131,10 @@ def correctScanData(scans, offset):
 
 def runICP(scans,a,b,fname):
     # ICP settings
-    N = 10
+    N = 30
     e = 1e-5
-    k = 3
-    maxRng = 10.0
+    k = 2.5
+    maxRng = 20.0
     R,T,A,B,errors,loc = ICP.laserDataIcp(scans[a],scans[b], N, e, k, ICP.pwSSE, maxRng)
     plt.clf()
     plotRobot(0,0,loc[0],'k')
@@ -143,6 +143,7 @@ def runICP(scans,a,b,fname):
     plotPoints(B.T, 'b', fname)
     C = (R.dot(B).T + T).T
     plotPoints(C.T, 'm', fname)
+    return R,T,loc
 
 def plotPos(posData, fname):
     """
@@ -197,5 +198,12 @@ if __name__ == '__main__':
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
+        pos = [(0,0)]
         for i in range(1,len(rawParser.rangeData)):
-            runICP(rawParser.rangeData,i-1,i,os.path.abspath(os.path.join(outdir,'laserICP-{0}.png'.format(str(i).zfill(6)))))
+            # loc = (atheta, dx, dy, btheta)
+            R,T,loc = runICP(rawParser.rangeData,i-1,i,os.path.abspath(os.path.join(outdir,'laserICP-{0}.png'.format(str(i).zfill(6)))))
+            dxDy = np.array([loc[1],loc[2]])
+            corDxDy = (R.dot(dxDy).T + T).T
+            pos.append((pos[-1][0] + corDxDy[0], pos[-1][1] + corDxDy[1]))
+
+        plotPos(pos, 'correctedPos.png');
