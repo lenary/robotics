@@ -75,10 +75,19 @@ class ICP(object):
             e, ib = distfunc(a[:,i], b)
             PE.append((e,ib))
 
+        # at this point, each point in a is matched to a point in b
+        # but, the same point in b may be matched to multiple points in a
+        # (i.e., it may be the closest point to multiple points from a)
+
+        # but, we want to only accept one corresponding point from b for each point in a
+        # and, the accepted pairs must be within an error threshold
+
         # compute outlier rejection threshold
         stdv = np.std([pe[0] for pe in PE])
         RT = sf*stdv
 
+        # only accept pairs of points that have error <= rejection threshold
+        # map index of b to list of all pairs (a,b,error, index of point in b)
         bToa = {}
         for i in range(len(PE)):
             if (PE[i][0] <= RT):
@@ -88,9 +97,9 @@ class ICP(object):
                 else:
                     bToa[PE[i][1]].append(data)
 
-        # at this point, each point in a is matched to a point in b
-        # but, the same point in b may be present in B multiple times
-        # (i.e., it may be the closest point to multiple points from a)
+
+        # for each corresponding point b that was selected by one or more points in a
+        # choose only the pair (a,b) that has the minimum error distance
         data = []
         for k,v in bToa.iteritems():
             data.append(min(v,key=itemgetter(2)))
@@ -363,6 +372,14 @@ class ICP(object):
         """
         return r.T, -t.dot(np.linalg.inv(r.T))
 
+    @staticmethod
+    def recoverTheta(R):
+        """
+        Given a rotation matrix, recover the rotation angle theta
+
+        R = np.array([[np.cos(theta), -1.0*np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+        """
+        return np.arctan2(R[1,0],R[0,0])
 
 def plotSets(A,B,C,R,T):
     plt.clf()
