@@ -286,6 +286,16 @@ class ICP(object):
         2. A are the model points, B are the data points
         3. The Rotation and Translation between A and B are small, especially Rotation, for some
         definition of small
+
+
+        TODO: this algorithm still frequently results in the correction appearing to be an average
+        of the two scans, i.e., the corrected scan will be closer to scanA than scanB is, but not
+        necessarily aligned onto scanA.
+
+        TODO: occasionally, scanA and scanB will be aligned very well at the start, but ICP will
+        give a "correction" that pushes scanB away from scanA. This is probably due to using
+        a point to point ICP algorithm instead of point to plane, or because the selection of
+        points and corresponding points in scans A and B effectively chooses a poor set of points.
         """
 
         ### ICP Pre-Processing

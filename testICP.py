@@ -44,6 +44,17 @@ def plotRobot(x,y,theta,c='g',thetaLen=0.5):
     plt.show()
 
 def runICP(scans,a,b,fname):
+    """
+    Run ICP on two scans, given by indices a and b, saving a plot
+    of the two scans, plus the "corrected" scan to fname
+
+    Rreturns the rotation and translation matrices, R and T;
+    the location vector giving heading of scan a, (dx,dy) to robot in
+    scan b, and heading of scan b; and the point sets A, B, and C, where
+    A has the robot at the origin, robot for B is at (dx,dy), and C is
+    the correct scan b
+    """
+
     # ICP settings
     N = 30
     e = 1e-5
@@ -75,8 +86,6 @@ def plotPos(posData, fname, c='r'):
     plt.ylabel('y pos')
     plt.savefig('{0}'.format(fname))
 
-#def plotRotatedPos
-
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print '{0} rawfile corfile'.format(sys.argv[0])
@@ -98,6 +107,8 @@ if __name__ == '__main__':
         rawParser.plotPos('pos-raw.png')
         corParser.plotPos('pos-cor.png')
 
+        # plot raw and corrected position data as reported by laser scans
+        # This should produce same shape as prior two plots, just with fewer points
         print 'len laser raw {0}'.format(len(rawParser.rangeData))
         plotPos(rawParser.rangeData, 'pos-laser-raw.png')
         print 'len laser cor {0}'.format(len(corParser.rangeData))
@@ -107,11 +118,13 @@ if __name__ == '__main__':
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
+        # run ICP for each pair of consecutive frames
         pos = [(0,0)]
         totalTheta = 0.0
-        for i in range(1,200):#len(rawParser.rangeData)):
+        for i in range(1,len(rawParser.rangeData)):
+            fpath = os.path.abspath(os.path.join(outdir,'laserICP-{0}.png'.format(str(i).zfill(6))))
             # loc = (atheta, dx, dy, btheta)
-            R,T,loc,A,B,C = runICP(rawParser.rangeData,i-1,i,os.path.abspath(os.path.join(outdir,'laserICP-{0}.png'.format(str(i).zfill(6)))))
+            R,T,loc,A,B,C = runICP(rawParser.rangeData,i-1,i,fpath)
 
             # at each step, plot A rotated by totalTheta, which is the accumulated rotational offset
             Rp = np.array([[np.cos(totalTheta), -1.0*np.sin(totalTheta)],[np.sin(totalTheta), np.cos(totalTheta)]])
@@ -126,9 +139,12 @@ if __name__ == '__main__':
             dx = loc[1]
             dy = loc[2]
 
+
+            # accumulate rotation
             totalTheta = totalTheta + rTheta
             print '{0}: {1:.5f}, {2:.2f}, {3:.5f}'.format(i, totalTheta, np.rad2deg(totalTheta), rTheta)
 
+            # compute "corrected" position
             dxDy = np.array([loc[1],loc[2]])
             Rp = np.array([[np.cos(totalTheta), -1.0*np.sin(totalTheta)],[np.sin(totalTheta), np.cos(totalTheta)]])
             corDxDy = (Rp.dot(dxDy).T + T).T
