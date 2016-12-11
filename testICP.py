@@ -62,14 +62,14 @@ def runICP(scans,a,b,fname):
     plotPoints(C.T, 'm', fname)
     return R,T,loc,A,B,C
 
-def plotPos(posData, fname):
+def plotPos(posData, fname, c='r'):
     """
     Plot robot position from odometry data
     """
     x = [p[0] for p in posData]
     y = [p[1] for p in posData]
     plt.clf()
-    plt.plot(x, y, 'k.')
+    plt.plot(x, y, '{0}.'.format(c))
     plt.axis('equal')
     plt.xlabel('x pos')
     plt.ylabel('y pos')
@@ -130,7 +130,8 @@ if __name__ == '__main__':
             print '{0}: {1:.5f}, {2:.2f}, {3:.5f}'.format(i, totalTheta, np.rad2deg(totalTheta), rTheta)
 
             dxDy = np.array([loc[1],loc[2]])
-            corDxDy = (R.dot(dxDy).T + T).T
+            Rp = np.array([[np.cos(totalTheta), -1.0*np.sin(totalTheta)],[np.sin(totalTheta), np.cos(totalTheta)]])
+            corDxDy = (Rp.dot(dxDy).T + T).T
             pos.append((pos[-1][0] + corDxDy[0], pos[-1][1] + corDxDy[1]))
 
 
