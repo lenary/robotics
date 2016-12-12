@@ -4,8 +4,11 @@ import sys
 import os
 import math
 
+import numpy as np
+
 from CarmenParser import CarmenParser
 from SDF import SDF
+from ICP import ICP
 
 # check for DISPLAY environment variable and use matplotlib 'Agg' if not present
 # this is a check for Windows Linux Subsystem GUI issues
@@ -15,18 +18,30 @@ if os.environ.get('DISPLAY') is None:
 
 import matplotlib.pyplot as plt
 
-def plotPos(pos):
+def runICP(scana, scanb):
     """
-    Plot robot position from odometry data
+    Run ICP on two scans, given by indices a and b, saving a plot
+    of the two scans, plus the "corrected" scan to fname
+
+    Rreturns the rotation and translation matrices, R and T;
+    the location vector giving heading of scan a, (dx,dy) to robot in
+    scan b, and heading of scan b; and the point sets A, B, and C, where
+    A has the robot at the origin, robot for B is at (dx,dy), and C is
+    the correct scan b
     """
-    x = [p[0] for p in pos]
-    y = [p[1] for p in pos]
-    plt.clf()
-    plt.plot(x, y, 'k.')
-    plt.axis('equal')
-    plt.xlabel('x pos')
-    plt.ylabel('y pos')
-    plt.savefig('pos.png')
+
+    # ICP settings
+    N = 30
+    e = 1e-5
+    k = 2.5
+    maxRng = 10.0
+    # loc = (atheta, dx, dy, btheta)
+    R,T,A,B,errors,loc = ICP.laserDataIcp(scana, scanb, N, e, k, ICP.pwSSE, maxRng)
+    theta = ICP.recoverTheta(R)
+    # compute "corrected" scanB
+    C = (R.dot(B).T + T).T
+
+    return R,T,loc,A,B,C
 
 
 def plotScan(scans, name):
@@ -38,60 +53,80 @@ def plotScan(scans, name):
     Commented out lines are for plotting the laser scan data points
     """
 
-    res = 0.1
-
-    plt.clf()
+    res = 0.10
 
     global_sdf = SDF.asGlobal(initextents=(200.0, 200.0), res=res)
 
-    # sys.stdout.write("Scanning...")
-    # sys.stdout.flush()
+    # Run ICP for each pair of consecutive frames
+    pos = [(0,0)]
+    totalTheta = 0.0
 
+    prevScan = None
+
+    sys.stdout.write("Scanning %s..." % name)
+    sys.stdout.flush()
+
+    c = 0
     for scan in scans:
-        local_sdf = SDF.fromRangeLine(scan, res=res, threshold=10)
-        global_sdf.addLocalSDF(local_sdf)
-        # sys.stdout.write(".")
-        # sys.stdout.flush()
+        if prevScan:
+            R,T,loc,A,B,C = runICP(scan, prevScan)
+
+            # at each step, plot A rotated by totalTheta, which is the accumulated rotational offset
+            Rp = np.array([[np.cos(totalTheta), -1.0*np.sin(totalTheta)],[np.sin(totalTheta), np.cos(totalTheta)]])
+            Ap = Rp.dot(A)
+
+            # rotation angle from ICP (i.e., correction to rotation)
+            rTheta = ICP.recoverTheta(R)
+
+            # accumulate rotation
+            totalTheta = totalTheta + rTheta
+
+            # compute "corrected" position
+            dxDy = np.array([loc[1],loc[2]])
+            Rp = np.array([[np.cos(totalTheta), -1.0*np.sin(totalTheta)],[np.sin(totalTheta), np.cos(totalTheta)]])
+            corDxDy = (Rp.dot(dxDy).T + T).T
+
+            currPos = pos[-1]
+
+            newLaserData = []
+            for p in Ap.T:
+                x,y = p
+                newBrg = np.arctan2(y,x) - loc[0]
+                newRng = np.hypot(y,x)
+                newLaserData.append((newBrg,newRng))
+
+            corrScan = (currPos[0], currPos[1], loc[0], None, newLaserData)
+
+            lastPos = (pos[-1][0] + corDxDy[0], pos[-1][1] + corDxDy[1])
+            pos.append(lastPos)
 
 
-        # plot robot location and heading
-        # (x,y,theta,_,lrData) = scan
-        # thetaLen = 0.5
-        # brgs = [brg for (brg,_) in lrData]
-        # maxBrg = max(brgs)
-        # minBrg = min(brgs)
-        # plt.plot([x],[y], 'bo')
-        # plt.plot([x, x+(2*thetaLen*math.cos(theta))],
-        #          [y, y+(2*thetaLen*math.sin(theta))],
-        #          'b-')
-        # plt.plot([x, x+(thetaLen*math.cos(theta + maxBrg))],
-        #          [y, y+(thetaLen*math.sin(theta + maxBrg))],
-        #          'r-')
-        # plt.plot([x, x+(thetaLen*math.cos(theta + minBrg))],
-        #          [y, y+(thetaLen*math.sin(theta + minBrg))],
-        #          'g-')
+            local_sdf = SDF.fromRangeLine(corrScan, res=res, threshold=10)
+            global_sdf.addLocalSDF(local_sdf)
 
-    # sys.stdout.write("\n")
+            sys.stdout.write(".")
+            sys.stdout.flush()
 
+
+        prevScan = scan
+
+        c += 1
+        if (c % 10) == 0:
+            sys.stdout.write(" %d " % c)
+        if (c > 50):
+            break
+
+    sys.stdout.write("\n")
     print "Scanning Complete: %s" % name
 
-    global_sdf.plotSurfaces(name)
-    global_sdf.plot(name)
-
-    # plt.axis('equal')
-    # plt.xlabel('x pos')
-    # plt.ylabel('y pos')
-    # plt.show()
-    # plt.savefig('scan.png')
+    global_sdf.plotSurfaces(name, prefix="corr-")
+    global_sdf.plot(name, prefix="corr-")
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         fpin = sys.argv[1]
-        print("Logfile: %s" % fpin)
 
         parser = CarmenParser()
         parser.parse(fpin)
-
-        # plotPos(parser.posData)
 
         plotScan(parser.rangeData, fpin.rsplit("/",1)[0])

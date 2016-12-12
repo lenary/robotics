@@ -202,17 +202,17 @@ class SDF(object):
         print "Extending..."
         pass
 
-    def plot(self, name):
+    def plot(self, name, prefix=""):
         # This is odd, but gives us really nice plots.
         masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
 
         fig = plt.figure(dpi=400, tight_layout=True)
         ax = fig.add_subplot(1, 1, 1, frame_on=False, xticks=[], yticks=[], autoscale_on=True)
         ax.imshow(masked, origin='lower', interpolation='nearest', aspect='equal')
-        fig.savefig("%s/sdf-all.%d.png" % (name, int(self.res*100)), dpi=fig.dpi)
+        fig.savefig("%s/%ssdf-all.%d.png" % (name, prefix, int(self.res*100)), dpi=fig.dpi)
 
 
-    def plotSurfaces(self, name):
+    def plotSurfaces(self, name, prefix=""):
         # so we first mask to only the places we have readings
         masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
 
@@ -222,12 +222,12 @@ class SDF(object):
         # surface, or at least squares that think they're within that
         # distance.
         # We'll plot the number of readings, higher number = more sure.
-        surfaces = np.ma.masked_where(np.absolute(masked) > 3*self.res, self._array["nreadings"])
+        surfaces = np.ma.masked_where(np.absolute(masked) > 3*self.res, masked)
 
         fig = plt.figure(dpi=400, tight_layout=True)
         ax = fig.add_subplot(1, 1, 1, frame_on=False, xticks=[], yticks=[], autoscale_on=True)
         ax.imshow(surfaces, origin='lower', interpolation='nearest', aspect='equal')
-        fig.savefig("%s/sdf-surfaces.%d.png" % (name, int(self.res*100)), dpi=fig.dpi)
+        fig.savefig("%s/%ssdf-surfaces.%d.png" % (name, prefix, int(self.res*100)), dpi=fig.dpi)
 
 
 def closestResVal(value, res):
