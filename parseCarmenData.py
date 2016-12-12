@@ -29,7 +29,7 @@ def plotPos(pos):
     plt.savefig('pos.png')
 
 
-def plotScan(scans):
+def plotScan(scans, name):
     """
     Plot laser range data scan taken with robot at specified position.
 
@@ -38,13 +38,21 @@ def plotScan(scans):
     Commented out lines are for plotting the laser scan data points
     """
 
+    res = 0.1
+
     plt.clf()
 
-    global_sdf = SDF.asGlobal(initextents=(200.0, 200.0), res=0.1)
+    global_sdf = SDF.asGlobal(initextents=(200.0, 200.0), res=res)
+
+    # sys.stdout.write("Scanning...")
+    # sys.stdout.flush()
 
     for scan in scans:
-        local_sdf = SDF.fromRangeLine(scan, res=0.1, threshold=10)
+        local_sdf = SDF.fromRangeLine(scan, res=res, threshold=10)
         global_sdf.addLocalSDF(local_sdf)
+        # sys.stdout.write(".")
+        # sys.stdout.flush()
+
 
         # plot robot location and heading
         # (x,y,theta,_,lrData) = scan
@@ -63,8 +71,12 @@ def plotScan(scans):
         #          [y, y+(thetaLen*math.sin(theta + minBrg))],
         #          'g-')
 
+    # sys.stdout.write("\n")
 
-    global_sdf.plot(plt)
+    print "Scanning Complete: %s" % name
+
+    global_sdf.plotSurfaces(name)
+    global_sdf.plot(name)
 
     # plt.axis('equal')
     # plt.xlabel('x pos')
@@ -75,11 +87,11 @@ def plotScan(scans):
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         fpin = sys.argv[1]
-        print(fpin)
+        print("Logfile: %s" % fpin)
 
         parser = CarmenParser()
         parser.parse(fpin)
 
-        plotPos(parser.posData)
+        # plotPos(parser.posData)
 
-        plotScan(parser.rangeData)
+        plotScan(parser.rangeData, fpin.rsplit("/",1)[0])

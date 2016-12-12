@@ -1,5 +1,7 @@
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+import matplotlib.transforms as plt_tr
 
 """
 Ok, this is a signed distance function.
@@ -50,6 +52,8 @@ class SDF(object):
         self._dtype = np.dtype([('dist', np.float32), ('nreadings', np.int)])
 
         self._array = np.zeros(self.size, dtype=self._dtype)
+
+        self._pltextents = None
 
     """
 
@@ -122,10 +126,21 @@ class SDF(object):
             # If we're not truncating, or the distance is less than
             # the truncated distance from the surface, add the reading
             self._array[idx] = (new_ave_dist, new_count)
+            self._extendPlotExtent(idx)
         elif dist < -self.truncate:
             # Otherwise, we've gone further than the truncate distance
             # beyond the surface reading, so stop
             return "STOP"
+
+    def _extendPlotExtent(self, idx):
+        y = idx[0]
+        x = idx[1]
+        if self._pltextents is None:
+            self._pltextents = [x,x,y,y]
+        else:
+            [min_x,max_x,min_y,max_y] = self._pltextents
+            self._pltextents = [min(min_x,x),max(max_x,x),min(min_y,y),max(max_y,y)]
+
 
 
     def _convertCoordsToLocalIdx(self, y, x):
@@ -187,16 +202,17 @@ class SDF(object):
         print "Extending..."
         pass
 
-    def plot(self, plt):
+    def plot(self, name):
         # This is odd, but gives us really nice plots.
         masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
 
-        plt.imshow(masked, origin='lower', interpolation='nearest', aspect='equal')
-        plt.colorbar()
-        plt.show()
+        fig = plt.figure(dpi=400, tight_layout=True)
+        ax = fig.add_subplot(1, 1, 1, frame_on=False, xticks=[], yticks=[], autoscale_on=True)
+        ax.imshow(masked, origin='lower', interpolation='nearest', aspect='equal')
+        fig.savefig("%s/sdf-all.%d.png" % (name, int(self.res*100)), dpi=fig.dpi)
 
 
-    def plotSurfaces(self, plt):
+    def plotSurfaces(self, name):
         # so we first mask to only the places we have readings
         masked = np.ma.masked_where(self._array["nreadings"] == 0, self._array["dist"])
 
@@ -208,11 +224,10 @@ class SDF(object):
         # We'll plot the number of readings, higher number = more sure.
         surfaces = np.ma.masked_where(np.absolute(masked) > 3*self.res, self._array["nreadings"])
 
-        plt.clf()
-        plt.axis('equal')
-        plt.imshow(surfaces, origin='lower', interpolation='nearest', aspect='equal')
-        plt.colorbar()
-        plt.show()
+        fig = plt.figure(dpi=400, tight_layout=True)
+        ax = fig.add_subplot(1, 1, 1, frame_on=False, xticks=[], yticks=[], autoscale_on=True)
+        ax.imshow(surfaces, origin='lower', interpolation='nearest', aspect='equal')
+        fig.savefig("%s/sdf-surfaces.%d.png" % (name, int(self.res*100)), dpi=fig.dpi)
 
 
 def closestResVal(value, res):
